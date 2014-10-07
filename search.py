@@ -313,7 +313,7 @@ def positionLogicPlan(problem):
 
         # Add successor axioms and generate children for next_states
         # add P[1,1,T] & ~P[2,1,T] & ~P[1,2,T] & ~P[1,1,T] & (P(2,2,0) & South[0] <=> P[2,1,1]) & 
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         list_of_successors = []
         # count = 0
         for state in next_states:
@@ -332,6 +332,7 @@ def positionLogicPlan(problem):
 
             # another for loop to add successor constraints
             parent_state = sym("P", state[0], state[1], t)
+            successor_state_axioms = []
             for action in actions:
                 successor, cost = problem.result(state, action)
                 # append successor
@@ -342,16 +343,25 @@ def positionLogicPlan(problem):
                 # append child to kb P[2,1,1]
                 kb.append(kb_successor)
                 list_of_successors.append((kb_successor, kb_action))
-                successor_state_axiom = logic.Expr('<=>', (parent_state & kb_action), kb_successor)
+                # successor_state_axiom = logic.Expr('<=>', (parent_state & kb_action), kb_successor)
+                successor_state_axioms.append(logic.Expr('<=>', (parent_state & kb_action), kb_successor))
                 # print successor_state_axiom
                 # Right now: only to_cnf on specific successor_state_axiom instead of a list of them
-                kb.append(logic.to_cnf(successor_state_axiom))
+                # kb.append(logic.to_cnf(successor_state_axiom))
 
+                # attempt to do to_cnf with all actions
+            sta = successor_state_axioms[1]
+            for succ in successor_state_axioms[1:]:
+                # import pdb; pdb.set_trace()
+                sta &= succ
+
+            kb.append(logic.to_cnf(sta))
 
 
             #  P(2,1,1) & West[0] V P(1,2,1) & South[0] <=> P[1,1,2]
 
         model = logic.pycoSAT(kb)
+        print model
         if model:
             return extractActionSequence(model, ['North', 'South', 'East', 'West'])
         else:
