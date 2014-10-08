@@ -362,14 +362,15 @@ def positionLogicPlan(problem):
                     initial |= (tup[0] & tup[1])
 
                 comb_ssa = logic.Expr('<=>', initial, succ)
-                # kb.append(logic.to_cnf(exactlyOne([comb_ssa])))
-                kb.append(logic.to_cnf(comb_ssa))
+                kb.append(logic.to_cnf(exactlyOne([comb_ssa])))
+                # kb.append(logic.to_cnf(comb_ssa))
                 print "COMB_SSA"
                 print comb_ssa
 
             #  P(2,1,1) & North[1] V P(1,2,1) & East[1] <=> P[2,2,2]
         model = logic.pycoSAT(kb)
-        # print 'MODEL'
+        print 'MODEL'
+        print model
         if model:
             answer = extractActionSequence(model, ['North', 'South', 'East', 'West'])
             # return answer
