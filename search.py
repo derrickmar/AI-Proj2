@@ -201,7 +201,6 @@ def exactlyOne(expressions) :
     # print cnf_ans
     return cnf_ans
 
-
 def extractActionSequence(model, actions):
     """
     Convert a model in to an ordered list of actions.
@@ -293,7 +292,6 @@ def positionLogicPlan(problem):
             initialConstraint &= ~sym("P", legalState[0], legalState[1], time)
     kb.append(initialConstraint)
 
-
     #next_states = [ P[2,2,1] ]
     next_states = [initialState]
     for t in range(time, time_max + 1):
@@ -310,74 +308,99 @@ def positionLogicPlan(problem):
         # should already be in kb format
         kb.insert(0, goalConstraint)
 
-
         # Add successor axioms and generate children for next_states
         # add P[1,1,T] & ~P[2,1,T] & ~P[1,2,T] & ~P[1,1,T] & (P(2,2,0) & South[0] <=> P[2,1,1]) & 
         # import pdb; pdb.set_trace()
-        list_of_successors = []
-        # count = 0
+        list_of_successors = {}
+
         for state in next_states:
-            # count += 1
-            # print count
-            # print state
             actions = problem.actions(state)
 
             # CREATE ACTION CLAUSES and exactlyOne could be true
             symbolActions = []
             for action in actions:
                 symbolActions.append(sym(action, t))
-            # not sure if our existing exactlyOne method will work right now but we'll see
+
+            # TODO: not sure if our existing exactlyOne method will work
             kbActions = exactlyOne(symbolActions)
             kb.append(kbActions)
 
             # another for loop to add successor constraints
             parent_state = sym("P", state[0], state[1], t)
-            successor_state_axioms = []
+
             for action in actions:
                 successor, cost = problem.result(state, action)
+
                 # append successor
-                print 'hey!'
-                print list_of_successors
                 kb_successor = sym("P", successor[0], successor[1], t + 1)
                 kb_action = sym(action, t)
+
+                # NOT SUPPOSED TO DO THIS!!!
                 # append child to kb P[2,1,1]
-                kb.append(kb_successor)
-                list_of_successors.append((kb_successor, kb_action))
-                # successor_state_axiom = logic.Expr('<=>', (parent_state & kb_action), kb_successor)
-                successor_state_axioms.append(logic.Expr('<=>', (parent_state & kb_action), kb_successor))
+                # kb.append(kb_successor)
+                if list_of_successors[kb_successor]:
+                    list_of_successors[kb_successor] = list_of_successors[kb_successor].append((kb_action, parent_state))
+                else:
+                    list_of_successors[kb_successor] = [(kb_action, parent_state)]
+
+                successor_state_axiom = logic.Expr('<=>', (parent_state & kb_action), kb_successor)
+                # successor_state_axioms.append(logic.Expr('<=>', (parent_state & kb_action), kb_successor))
                 # print successor_state_axiom
                 # Right now: only to_cnf on specific successor_state_axiom instead of a list of them
-                # kb.append(logic.to_cnf(successor_state_axiom))
+                kb.append(logic.to_cnf(successor_state_axiom))
 
-                # attempt to do to_cnf with all actions
-            sta = successor_state_axioms[1]
-            for succ in successor_state_axioms[1:]:
-                # import pdb; pdb.set_trace()
-                sta &= succ
+            # [(P[2,2,2], North[1]), (P[1,1,2], West[1]), (P[1,1,2], South[1]), (P[2,2,2], East[1])]
+            # attempt to do to_cnf with all actions
+            # sta = successor_state_axioms[1]
+            # for succ in successor_state_axioms[1:]:
+            #     # import pdb; pdb.set_trace()
+            #     sta &= succ
 
-            kb.append(logic.to_cnf(sta))
+            # kb.append(logic.to_cnf(sta))
 
+            # attempt to add combinational ssa
+            for index, tup in enumerate(list_of_successors):
+                for suc, act, par in list_of_successors[index+1:]:
+                    if tup[0] == suc:
+                        # import pdb; pdb.set_trace()
+                        first_expr = (tup[2] & tup[1])
+                        second_expr = (par & act)
 
-            #  P(2,1,1) & West[0] V P(1,2,1) & South[0] <=> P[1,1,2]
+                        # interchanging: calling exactlyOne
+                        # ans = logic.Expr('<=>', (first_expr | second_expr), suc)
+                        ans = [logic.Expr('<=>', (first_expr | second_expr), suc)]
+                        # kb.append(logic.to_cnf(ans))
+                        kb.append(logic.to_cnf(exactlyOne(ans)))
 
+                # (P[2,2,2], North[1], P[2,1,1])
+                # (P[2,2,2], East[1], P[1,2,1])
+
+            #  P(2,1,1) & North[1] V P(1,2,1) & East[1] <=> P[2,2,2]
         model = logic.pycoSAT(kb)
-        print model
+        print 'MODEL'
+        print t
         if model:
-            return extractActionSequence(model, ['North', 'South', 'East', 'West'])
+            answer = extractActionSequence(model, ['North', 'South', 'East', 'West'])
+            print 'answer'
+            print answer
+            if answer == []:
+                continue
+            else:
+                return answer
         else:
             print t
             # count = 0
             next_states = []
-            for st, at in list_of_successors:
+            for st, at, parent in list_of_successors:
                 ns = (st.getIndex()[0], st.getIndex()[1])
-                next_states.append(ns)
+                # if case here to remove dupicate states
+                if ns not in next_states:
+                    next_states.append(ns)
             kb.pop(0)
 
     return false
 
         # remove goal constraint
-
-
             #     next_states = [children]
             #     add children to KB?????
             #     add to kb a list of successor state axioms
