@@ -283,13 +283,14 @@ def positionLogicPlan(problem):
             continue
         else:
             initialConstraint &= ~sym("P", legalState[0], legalState[1], time)
+    # kb.append(initialConstraint)
     kb.append(logic.to_cnf(initialConstraint))
     print "INITIAL CONSTRAINT"
     print initialConstraint
 
     #next_states = [ P[2,2,1] ]
     next_states = [initialState]
-    for t in range(time, time_max + 1):
+    for t in range(time, time_max):
         print "TTTTTTTTTTTTTTT"
         print t
         print "NEXT_STATES"
@@ -302,17 +303,18 @@ def positionLogicPlan(problem):
         kbActions = exactlyOne(symbolActions)
         print "kbACTIONS"
         print kbActions
+        # kb.append(kbActions)
         kb.append(logic.to_cnf(kbActions))
 
         # ADD GOAL STATE
         # (((P[1,1,0] & ~P[1,2,0]) & ~P[2,1,0]) & ~P[2,2,0])
-        goalConstraint = sym("P", goalState[0], goalState[1], t + 1)
+        goalConstraint = sym("P", goalState[0], goalState[1], t)
         for legalState in legalStates:
             if legalState == goalState:
                 continue
             else:
                 # (((P[1,1,1] & ~P[1,2,0]) & ~P[2,1,0]) & ~P[2,2,0])
-                goalConstraint &= ~sym("P", legalState[0], legalState[1], t + 1)
+                goalConstraint &= ~sym("P", legalState[0], legalState[1], t)
         # should already be in kb format
         kb.insert(0, logic.to_cnf(goalConstraint))
         print "GOAL CONSTRAINT"
@@ -322,7 +324,8 @@ def positionLogicPlan(problem):
         # add P[1,1,T] & ~P[2,1,T] & ~P[1,2,T] & ~P[1,1,T] & (P(2,2,0) & South[0] <=> P[2,1,1]) & 
         # import pdb; pdb.set_trace()
         list_of_successors = {}
-        list_of_successor_state_axioms = []
+        # list_of_successor_state_axioms = []
+        kb_successors = []
 
         for state in next_states:
             actions = problem.actions(state)
@@ -341,20 +344,25 @@ def positionLogicPlan(problem):
                 if kb_successor in list_of_successors.keys():
                     list_of_successors[kb_successor].append((kb_action, parent_state))
                 else:
+                    kb_successors.append(kb_successor)
                     list_of_successors[kb_successor] = [(kb_action, parent_state)]
 
-                successor_state_axiom = logic.Expr('<=>', (parent_state & kb_action), kb_successor)
-                print "SUCCESSOR STATE AXIOM"
-                print successor_state_axiom
-                list_of_successor_state_axioms.append(successor_state_axiom)
-                kb.append(logic.to_cnf(successor_state_axiom))
+                # successor_state_axiom = logic.Expr('<=>', (parent_state & kb_action), kb_successor)
+                # print successor_state_axiom
+                # list_of_successor_state_axioms.append(successor_state_axiom)
+                # kb.append(logic.to_cnf(successor_state_axiom))
 
-
+        print "KB_SUCCESSORS"
+        print kb_successors
+        kb.append(logic.to_cnf(exactlyOne(kb_successors)))
         # attempt to add combinational ssa after you have all the actions
         # print 'YAY'
         for succ, actions_and_parents in list_of_successors.iteritems():
             if len(actions_and_parents) < 2:
-                continue
+                print "SUCCESSOR STATE AXIOM" # successor state axioms that has only one way to get to the goal
+                s = logic.Expr('<=>', (actions_and_parents[0][1] & actions_and_parents[0][0]), succ)
+                print s
+                kb.append(logic.to_cnf(s))
             else:
                 initial = (actions_and_parents[0][0] & actions_and_parents[0][1])
                 # print initial
@@ -364,7 +372,7 @@ def positionLogicPlan(problem):
                 comb_ssa = logic.Expr('<=>', initial, succ)
                 kb.append(logic.to_cnf(exactlyOne([comb_ssa])))
                 # kb.append(logic.to_cnf(comb_ssa))
-                print "COMB_SSA"
+                print "COMB_SSA" # combinational successor state axioms
                 print comb_ssa
 
             #  P(2,1,1) & North[1] V P(1,2,1) & East[1] <=> P[2,2,2]
@@ -373,22 +381,21 @@ def positionLogicPlan(problem):
         print model
         if model:
             answer = extractActionSequence(model, ['North', 'South', 'East', 'West'])
-            # return answer
+            return answer
             # print 'answer'
             # print answer
-            if answer == []:
-                continue
-            else:
-                return answer
+            # if answer == []:
+            #     continue
+            # else:
+            #     return answer
         else:
-            # count = 0
             next_states = []
             for successor, actions_and_parents in list_of_successors.iteritems():
                 ns = (successor.getIndex()[0], successor.getIndex()[1])
                 # if case here to remove dupicate states
                 if ns not in next_states:
                     next_states.append(ns)
-            kb.pop(0)
+            kb.pop(0) # remove the goal constraint for this timeste[]
 
     return false
 
