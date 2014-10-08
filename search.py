@@ -233,7 +233,6 @@ def extractActionSequence(model, actions):
 
     # for valids in list_of_valid_actions:
     list_of_valid_actions = []
-    print model
     # iterate through the key and values of a model
     # logic.PropSymbolExpr.parseExpr(expr), which returns a tuple in the form of ("North", "3")
     for key, value in model.iteritems():
@@ -243,10 +242,10 @@ def extractActionSequence(model, actions):
             if action_and_info[0] in actions:
                 list_of_valid_actions.append(action_and_info)
     # [('South', '0'), ('West', '1')]
-    print list_of_valid_actions
+    # print list_of_valid_actions
     ans = []
     for num in range(len(list_of_valid_actions)):
-        print num
+        # print num
         for valid in list_of_valid_actions:
             if int(valid[1]) == num:
                 ans.append(valid[0])
@@ -259,17 +258,11 @@ def positionLogicPlan(problem):
     Available actions are game.Directions.{NORTH,SOUTH,EAST,WEST}
     Note that STOP is not an available action.
     """
-    # problem.actions(problem.getStartState())
-    #  ['South', 'West']
-    # legalActions = problem.actions
-    # print legalActions
     sym = logic.PropSymbolExpr
-    # symbol = sym("P",2,2,0)
-    # print symbol
     time = 0
     time_max = 50
     kb = []
-    initialState = problem.startState
+    initialState = problem.getStartState()
     goalState = problem.getGoalState()
 
     # get the legalStates (everything but walls)
@@ -290,40 +283,51 @@ def positionLogicPlan(problem):
             continue
         else:
             initialConstraint &= ~sym("P", legalState[0], legalState[1], time)
-    kb.append(initialConstraint)
+    kb.append(logic.to_cnf(initialConstraint))
+    print "INITIAL CONSTRAINT"
+    print initialConstraint
 
     #next_states = [ P[2,2,1] ]
     next_states = [initialState]
     for t in range(time, time_max + 1):
+        print "TTTTTTTTTTTTTTT"
+        print t
+        print "NEXT_STATES"
+        print next_states
+
+        symbolActions = []
+        actions = ['North', 'South', 'East', 'West']
+        for action in actions:
+            symbolActions.append(sym(action, t))
+        kbActions = exactlyOne(symbolActions)
+        print "kbACTIONS"
+        print kbActions
+        kb.append(logic.to_cnf(kbActions))
 
         # ADD GOAL STATE
         # (((P[1,1,0] & ~P[1,2,0]) & ~P[2,1,0]) & ~P[2,2,0])
-        goalConstraint = sym("P", goalState[0], goalState[1], t)
+        goalConstraint = sym("P", goalState[0], goalState[1], t + 1)
         for legalState in legalStates:
             if legalState == goalState:
                 continue
             else:
                 # (((P[1,1,1] & ~P[1,2,0]) & ~P[2,1,0]) & ~P[2,2,0])
-                goalConstraint &= ~sym("P", legalState[0], legalState[1], t)
+                goalConstraint &= ~sym("P", legalState[0], legalState[1], t + 1)
         # should already be in kb format
-        kb.insert(0, goalConstraint)
+        kb.insert(0, logic.to_cnf(goalConstraint))
+        print "GOAL CONSTRAINT"
+        print goalConstraint
 
         # Add successor axioms and generate children for next_states
         # add P[1,1,T] & ~P[2,1,T] & ~P[1,2,T] & ~P[1,1,T] & (P(2,2,0) & South[0] <=> P[2,1,1]) & 
         # import pdb; pdb.set_trace()
         list_of_successors = {}
+        list_of_successor_state_axioms = []
 
         for state in next_states:
             actions = problem.actions(state)
 
-            # CREATE ACTION CLAUSES and exactlyOne could be true
-            symbolActions = []
-            for action in actions:
-                symbolActions.append(sym(action, t))
-
             # TODO: not sure if our existing exactlyOne method will work
-            kbActions = exactlyOne(symbolActions)
-            kb.append(kbActions)
 
             # another for loop to add successor constraints
             parent_state = sym("P", state[0], state[1], t)
@@ -331,96 +335,61 @@ def positionLogicPlan(problem):
             for action in actions:
                 successor, cost = problem.result(state, action)
 
-                # append successor
                 kb_successor = sym("P", successor[0], successor[1], t + 1)
                 kb_action = sym(action, t)
 
-                # NOT SUPPOSED TO DO THIS!!!
-                # append child to kb P[2,1,1]
-                # kb.append(kb_successor)
-                if list_of_successors[kb_successor]:
-                    list_of_successors[kb_successor] = list_of_successors[kb_successor].append((kb_action, parent_state))
+                if kb_successor in list_of_successors.keys():
+                    list_of_successors[kb_successor].append((kb_action, parent_state))
                 else:
                     list_of_successors[kb_successor] = [(kb_action, parent_state)]
 
                 successor_state_axiom = logic.Expr('<=>', (parent_state & kb_action), kb_successor)
-                # successor_state_axioms.append(logic.Expr('<=>', (parent_state & kb_action), kb_successor))
-                # print successor_state_axiom
-                # Right now: only to_cnf on specific successor_state_axiom instead of a list of them
+                print "SUCCESSOR STATE AXIOM"
+                print successor_state_axiom
+                list_of_successor_state_axioms.append(successor_state_axiom)
                 kb.append(logic.to_cnf(successor_state_axiom))
 
-            # [(P[2,2,2], North[1]), (P[1,1,2], West[1]), (P[1,1,2], South[1]), (P[2,2,2], East[1])]
-            # attempt to do to_cnf with all actions
-            # sta = successor_state_axioms[1]
-            # for succ in successor_state_axioms[1:]:
-            #     # import pdb; pdb.set_trace()
-            #     sta &= succ
 
-            # kb.append(logic.to_cnf(sta))
+        # attempt to add combinational ssa after you have all the actions
+        # print 'YAY'
+        for succ, actions_and_parents in list_of_successors.iteritems():
+            if len(actions_and_parents) < 2:
+                continue
+            else:
+                initial = (actions_and_parents[0][0] & actions_and_parents[0][1])
+                # print initial
+                for tup in actions_and_parents[1:]:
+                    initial |= (tup[0] & tup[1])
 
-            # attempt to add combinational ssa
-            for index, tup in enumerate(list_of_successors):
-                for suc, act, par in list_of_successors[index+1:]:
-                    if tup[0] == suc:
-                        # import pdb; pdb.set_trace()
-                        first_expr = (tup[2] & tup[1])
-                        second_expr = (par & act)
-
-                        # interchanging: calling exactlyOne
-                        # ans = logic.Expr('<=>', (first_expr | second_expr), suc)
-                        ans = [logic.Expr('<=>', (first_expr | second_expr), suc)]
-                        # kb.append(logic.to_cnf(ans))
-                        kb.append(logic.to_cnf(exactlyOne(ans)))
-
-                # (P[2,2,2], North[1], P[2,1,1])
-                # (P[2,2,2], East[1], P[1,2,1])
+                comb_ssa = logic.Expr('<=>', initial, succ)
+                # kb.append(logic.to_cnf(exactlyOne([comb_ssa])))
+                kb.append(logic.to_cnf(comb_ssa))
+                print "COMB_SSA"
+                print comb_ssa
 
             #  P(2,1,1) & North[1] V P(1,2,1) & East[1] <=> P[2,2,2]
         model = logic.pycoSAT(kb)
-        print 'MODEL'
-        print t
+        # print 'MODEL'
         if model:
             answer = extractActionSequence(model, ['North', 'South', 'East', 'West'])
-            print 'answer'
-            print answer
+            # return answer
+            # print 'answer'
+            # print answer
             if answer == []:
                 continue
             else:
                 return answer
         else:
-            print t
             # count = 0
             next_states = []
-            for st, at, parent in list_of_successors:
-                ns = (st.getIndex()[0], st.getIndex()[1])
+            for successor, actions_and_parents in list_of_successors.iteritems():
+                ns = (successor.getIndex()[0], successor.getIndex()[1])
                 # if case here to remove dupicate states
                 if ns not in next_states:
                     next_states.append(ns)
             kb.pop(0)
 
     return false
-
-        # remove goal constraint
-            #     next_states = [children]
-            #     add children to KB?????
-            #     add to kb a list of successor state axioms
-            #     P(2,2,0) & South[0] <=> P[2,1,1]
-            #     P(2,2,0) & West[0] <=> P[1,2,1]
-            #     NEXT ITERATION
-            #     P(2,1,1) & North[0] <=> P[2,2,2]
-            #     P(2,1,1) & West[0] <=> P[1,1,2]
-            #     P(1,2,1) & South[0] <=> P[1,1,2]
-            #     P(1,2,1) & East[0] <=> P[2,2,2]
-            #     successor_state_axioms is a tuple?
-            #         e.g. (P(2,2,0) & South[0] <=> P[2,1,1] & ~P[2,2,0]) & (P(2,2,0) & West[0] <=> P[1,2,1] & ~P[2,2,0])
-            #     kb.append(exactlyOne(logic.to_cnf(successor_state_axioms)))
-            #     you may call logic.pycoSAT with a list of Expr instances.
-            #     model = logic.pycoSAT(kb)
-            #     if model is not null then:
-            #         return extractActionSequence(model, ['North', 'South', 'East', 'West']) or is it actions for that specific state?
-            #     else continue
-    # print 'hello'
-    # return false
 
 
 def foodLogicPlan(problem):
